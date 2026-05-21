@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>FocusLock</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #0b0a14;
+    --bg2:       #111020;
+    --bg3:       #17152a;
+    --amber:     #e8a228;
+    --amber-dim: #7a5510;
+    --amber-glow:rgba(232,162,40,0.12);
+    --green:     #52c47a;
+    --green-dim: #2a6b40;
+    --red:       #e05565;
+    --purple:    #9a78e8;
+    --text:      #cdd0de;
+    --dim:       #6c6f84;
+    --dim2:      #4a4d62;
+    --border:    #201e33;
+    --border2:   #2c2940;
+    --mono:      'Space Mono', 'Courier New', monospace;
+  }
+
+  body {
+    width: 340px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    overflow-x: hidden;
+    position: relative;
+  }
+
+  /* ── Subtle noise texture ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.5;
+  }
+
+  /* ── Header ── */
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px 13px;
+    border-bottom: 1px solid var(--border2);
+    background: var(--bg2);
+    position: relative;
+    z-index: 1;
+  }
+
+  .logo { display: flex; align-items: center; gap: 9px; }
+  .logo-icon { width: 20px; height: 20px; opacity: 0.9; }
+  .logo-text {
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: 0.18em;
+    color: var(--amber);
+  }
+  .logo-ver {
+    font-size: 8px;
+    color: var(--dim);
+    letter-spacing: 0.08em;
+    align-self: flex-end;
+    margin-bottom: 1px;
+    margin-left: 2px;
+  }
+
+  .power-wrap { display: flex; align-items: center; gap: 8px; }
+  .power-label {
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    font-weight: 700;
+    transition: color 0.2s;
+  }
+  .power-label.on  { color: var(--green); }
+  .power-label.off { color: var(--dim); }
+
+  /* Toggle */
+  .toggle { position: relative; width: 38px; height: 20px; cursor: pointer; }
+  .toggle input { display: none; }
+  .toggle-track {
+    position: absolute; inset: 0;
+    background: var(--border2);
+    border: 1px solid var(--dim2);
+    transition: all 0.25s;
+  }
+  .toggle-thumb {
+    position: absolute;
+    top: 3px; left: 3px;
+    width: 12px; height: 12px;
+    background: var(--dim2);
+    transition: all 0.25s;
+  }
+  .toggle input:checked ~ .toggle-track {
+    background: rgba(82,196,122,0.1);
+    border-color: var(--green-dim);
+  }
+  .toggle input:checked ~ .toggle-thumb {
+    left: 21px;
+    background: var(--green);
+  }
+
+  /* ── Commit lock banner ── */
+  #commit-banner {
+    display: none;
+    background: rgba(154,120,232,0.07);
+    border-bottom: 1px solid rgba(154,120,232,0.25);
+    padding: 6px 16px;
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    color: var(--purple);
+    text-align: center;
+    position: relative;
+    z-index: 1;
+  }
+  #commit-banner.visible { display: block; }
+
+  /* ── Stats ── */
+  .stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    border-bottom: 1px solid var(--border2);
+    position: relative;
+    z-index: 1;
+  }
+  .stat {
+    padding: 10px 14px 9px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    border-right: 1px solid var(--border);
+  }
+  .stat:last-child { border-right: none; }
+  .stat-label {
+    font-size: 7.5px;
+    letter-spacing: 0.2em;
+    color: var(--dim);
+    text-transform: uppercase;
+  }
+  .stat-value {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: 0.03em;
+  }
+  .stat-value.green  { color: var(--green); }
+  .stat-value.amber  { color: var(--amber); }
+  .stat-value.purple { color: var(--purple); }
+
+  /* ── Sections ── */
+  .section {
+    border-bottom: 1px solid var(--border);
+    position: relative;
+    z-index: 1;
+  }
+  .section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 9px 16px 8px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .section-header:hover { background: rgba(255,255,255,0.015); }
+  .section-title {
+    font-size: 8.5px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--dim);
+    font-weight: 700;
+  }
+  .section-arrow {
+    font-size: 8px;
+    color: var(--dim2);
+    transition: transform 0.2s;
+  }
+  .section-arrow.open { transform: rotate(180deg); }
+  .section-body { padding: 2px 16px 14px; display: none; }
+  .section-body.open { display: block; }
+
+  /* ── Inputs ── */
+  .fl-input {
+    flex: 1;
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 6px 9px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .fl-input::placeholder { color: var(--dim2); }
+  .fl-input:focus { border-color: var(--amber-dim); }
+
+  .fl-btn {
+    background: none;
+    border: 1px solid var(--border2);
+    color: var(--amber);
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 6px 11px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s;
+    letter-spacing: 0.05em;
+  }
+  .fl-btn:hover { background: var(--amber-glow); border-color: var(--amber-dim); }
+  .fl-btn:disabled { border-color: var(--dim2); color: var(--dim2); cursor: not-allowed; }
+
+  .input-row { display: flex; gap: 6px; margin-top: 10px; }
+  .msg { font-size: 9px; color: var(--red); margin-top: 4px; min-height: 13px; }
+  .msg.ok { color: var(--green); }
+
+  /* ── Site list ── */
+  .site-item {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .site-item:last-of-type { border-bottom: none; }
+  .site-dot { width: 5px; height: 5px; background: var(--green); flex-shrink: 0; }
+  .site-dot.inactive { background: var(--dim2); }
+  .site-name { flex: 1; color: var(--text); font-size: 11px; }
+  .site-sub { font-size: 8.5px; color: var(--dim); margin-top: 2px; word-break: break-all; }
+  .site-del {
+    background: none;
+    border: 1px solid var(--border2);
+    color: var(--dim);
+    font-family: var(--mono);
+    font-size: 10px;
+    cursor: pointer;
+    padding: 2px 7px;
+    flex-shrink: 0;
+    transition: all 0.15s;
+  }
+  .site-del:hover { color: var(--red); border-color: var(--red); background: rgba(224,85,101,0.07); }
+  .site-locked { font-size: 8px; color: var(--dim2); flex-shrink: 0; letter-spacing: 0.08em; }
+
+  .playlist-row {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .playlist-input-wrap { flex: 1; }
+  .playlist-label { font-size: 7.5px; letter-spacing: 0.15em; color: var(--dim); margin-bottom: 4px; }
+  .playlist-status { font-size: 9px; margin-top: 3px; min-height: 12px; }
+  .playlist-status.ok  { color: var(--green); }
+  .playlist-status.err { color: var(--red); }
+  .playlist-status.dim { color: var(--dim2); }
+
+  /* ── Break ── */
+  .break-state { text-align: center; padding: 10px 0 4px; }
+  .break-big {
+    font-size: 30px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: var(--amber);
+    margin-bottom: 4px;
+  }
+  .break-note { font-size: 8.5px; color: var(--dim); letter-spacing: 0.08em; line-height: 1.6; }
+  .break-bar {
+    height: 1px;
+    background: var(--border2);
+    margin: 10px 0;
+    position: relative;
+    overflow: hidden;
+  }
+  .break-bar-fill {
+    position: absolute; left: 0; top: 0; bottom: 0;
+    background: var(--amber);
+    transition: width 1s linear;
+  }
+  .btn-break-popup {
+    width: 100%;
+    padding: 9px;
+    background: none;
+    border: 1px solid var(--border2);
+    color: var(--amber);
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.15s;
+    margin-top: 6px;
+  }
+  .btn-break-popup:hover:not(:disabled) {
+    background: var(--amber-glow);
+    border-color: var(--amber-dim);
+  }
+  .btn-break-popup:disabled {
+    border-color: var(--dim2);
+    color: var(--dim2);
+    cursor: not-allowed;
+  }
+
+  /* ── Settings ── */
+  .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .setting-item { display: flex; flex-direction: column; gap: 5px; }
+  .setting-label { font-size: 7.5px; letter-spacing: 0.15em; color: var(--dim); }
+  .setting-input-row { display: flex; align-items: center; gap: 5px; }
+  .setting-unit { font-size: 8.5px; color: var(--dim2); }
+  .num-input {
+    width: 54px;
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 700;
+    padding: 5px 7px;
+    outline: none;
+    text-align: center;
+    transition: border-color 0.15s;
+  }
+  .num-input:focus { border-color: var(--amber-dim); }
+  .fl-select {
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 9.5px;
+    padding: 5px 6px;
+    outline: none;
+    width: 100%;
+  }
+  .save-btn {
+    width: 100%;
+    padding: 8px;
+    background: none;
+    border: 1px solid var(--border2);
+    color: var(--dim);
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.15s;
+    margin-top: 12px;
+  }
+  .save-btn:hover { border-color: var(--amber-dim); color: var(--amber); }
+  .save-confirm { font-size: 9px; text-align: center; min-height: 14px; margin-top: 5px; letter-spacing: 0.1em; }
+  .save-confirm.ok  { color: var(--green); }
+  .save-confirm.err { color: var(--red); }
+
+  .settings-divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 14px 0 12px;
+  }
+
+  /* ── PIN ── */
+  .pin-section-title {
+    font-size: 7.5px;
+    letter-spacing: 0.2em;
+    color: var(--purple);
+    text-transform: uppercase;
+    margin-bottom: 9px;
+    font-weight: 700;
+  }
+  .pin-status-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 9px;
+  }
+  .pin-status { font-size: 9px; }
+  .pin-status.set   { color: var(--green); }
+  .pin-status.unset { color: var(--dim2); }
+  .pin-clear-btn {
+    background: none;
+    border: 1px solid var(--border2);
+    color: var(--dim);
+    font-family: var(--mono);
+    font-size: 8.5px;
+    padding: 2px 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .pin-clear-btn:hover { color: var(--red); border-color: var(--red); }
+
+  /* ── Footer ── */
+  .footer {
+    padding: 8px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--bg2);
+    border-top: 1px solid var(--border);
+    position: relative;
+    z-index: 1;
+  }
+  .footer-text { font-size: 7.5px; color: var(--dim2); letter-spacing: 0.12em; }
+  .indicator { width: 5px; height: 5px; background: var(--dim2); }
+  .indicator.on {
+    background: var(--green);
+    box-shadow: 0 0 5px var(--green);
+    animation: pulse 2.5s ease-in-out infinite;
+  }
+  .indicator.locked {
+    background: var(--purple);
+    box-shadow: 0 0 5px var(--purple);
+    animation: pulse 2.5s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+  /* ── Modals ── */
+  .modal-overlay {
+    display: none;
+    position: absolute;
+    inset: 0;
+    background: rgba(11,10,20,0.92);
+    z-index: 999;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(3px);
+  }
+  .modal-overlay.visible { display: flex; }
+
+  .modal-box {
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    padding: 22px 20px 18px;
+    width: 292px;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+  }
+
+  .modal-title {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+  }
+  .modal-title.purple { color: var(--purple); }
+  .modal-title.amber  { color: var(--amber); }
+  .modal-sub {
+    font-size: 9px;
+    color: var(--dim);
+    letter-spacing: 0.08em;
+    line-height: 1.7;
+    margin-top: -4px;
+  }
+
+  .pin-input-field {
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 18px;
+    font-weight: 700;
+    padding: 10px 12px;
+    text-align: center;
+    letter-spacing: 0.35em;
+    width: 100%;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .pin-input-field:focus { border-color: var(--purple); }
+
+  .pin-error {
+    font-size: 9px;
+    color: var(--red);
+    min-height: 12px;
+    text-align: center;
+    letter-spacing: 0.1em;
+    margin-top: -4px;
+  }
+
+  .modal-actions { display: flex; gap: 8px; }
+  .modal-btn {
+    flex: 1;
+    padding: 8px;
+    background: none;
+    border: 1px solid;
+    font-family: var(--mono);
+    font-size: 9.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .modal-btn.cancel  { border-color: var(--border2); color: var(--dim); }
+  .modal-btn.cancel:hover { border-color: var(--dim2); color: var(--text); }
+  .modal-btn.confirm        { border-color: var(--purple); color: var(--purple); }
+  .modal-btn.confirm:hover  { background: rgba(154,120,232,0.08); }
+  .modal-btn.confirm.amber  { border-color: var(--amber); color: var(--amber); }
+  .modal-btn.confirm.amber:hover { background: var(--amber-glow); }
+
+  .lock-display { text-align: center; padding: 6px 0 2px; }
+  .lock-time-big {
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--amber);
+    letter-spacing: 0.04em;
+  }
+  .lock-time-label {
+    font-size: 7.5px;
+    color: var(--dim2);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    margin-top: 5px;
+  }
+
+  .modal-hint {
+    font-size: 8px;
+    color: var(--dim2);
+    text-align: center;
+    letter-spacing: 0.06em;
+    line-height: 1.6;
+    margin-top: -4px;
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════ PIN Entry Modal ═══════ -->
+<div class="modal-overlay" id="pin-modal">
+  <div class="modal-box">
+    <div class="modal-title purple">PIN Required</div>
+    <div class="modal-sub">Enter your PIN to disable focus mode.</div>
+    <input class="pin-input-field" id="pin-entry" type="password" maxlength="20" placeholder="••••" autocomplete="off">
+    <div class="pin-error" id="pin-entry-error"></div>
+    <div class="modal-actions">
+      <button class="modal-btn cancel"  id="pin-cancel">Cancel</button>
+      <button class="modal-btn confirm" id="pin-submit">Unlock</button>
+    </div>
+    <div class="modal-hint">Give your PIN to a friend for real accountability.</div>
+  </div>
+</div>
+
+<!-- ═══════ Commitment Lock Modal ═══════ -->
+<div class="modal-overlay" id="lock-modal">
+  <div class="modal-box">
+    <div class="modal-title amber">Commitment Active</div>
+    <div class="modal-sub">You locked yourself in. No overrides until the timer expires.</div>
+    <div class="lock-display">
+      <div class="lock-time-big" id="lock-time-display">—</div>
+      <div class="lock-time-label">remaining</div>
+    </div>
+    <div class="modal-actions">
+      <button class="modal-btn confirm amber" id="lock-close">Keep Focusing</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════ Header ═══════ -->
+<div class="header">
+  <div class="logo">
+    <img class="logo-icon" src="icons/icon48.png" alt="">
+    <span class="logo-text">FOCUSLOCK</span>
+    <span class="logo-ver">v1.0</span>
+  </div>
+  <div class="power-wrap">
+    <span class="power-label off" id="power-label">OFF</span>
+    <label class="toggle">
+      <input type="checkbox" id="focus-toggle">
+      <div class="toggle-track"></div>
+      <div class="toggle-thumb"></div>
+    </label>
+  </div>
+</div>
+
+<!-- Commitment lock banner -->
+<div id="commit-banner">COMMITMENT LOCK ACTIVE — <span id="banner-time"></span></div>
+
+<!-- ═══════ Stats ═══════ -->
+<div class="stats">
+  <div class="stat">
+    <span class="stat-label">Session</span>
+    <span class="stat-value green" id="stat-session">—</span>
+  </div>
+  <div class="stat">
+    <span class="stat-label">Blocks</span>
+    <span class="stat-value amber" id="stat-blocks">0</span>
+  </div>
+  <div class="stat">
+    <span class="stat-label">Status</span>
+    <span class="stat-value" id="stat-status">Idle</span>
+  </div>
+</div>
+
+<!-- ═══════ Allowed Sites ═══════ -->
+<div class="section">
+  <div class="section-header" data-target="sites-body">
+    <span class="section-title">Allowed Sites</span>
+    <span class="section-arrow open" id="arrow-sites">▾</span>
+  </div>
+  <div class="section-body open" id="sites-body">
+    <div class="playlist-row">
+      <div class="site-dot" id="yt-dot"></div>
+      <div class="playlist-input-wrap">
+        <div class="playlist-label">YOUTUBE PLAYLIST ID</div>
+        <input class="fl-input" id="yt-input" type="text" placeholder="e.g. PLxxxxxxxxxxxxxxxx" spellcheck="false">
+        <div class="playlist-status dim" id="yt-status">Paste playlist ID or full URL</div>
+      </div>
+    </div>
+    <div class="site-item">
+      <div class="site-dot"></div>
+      <div class="site-name">Spotify<div class="site-sub">open.spotify.com</div></div>
+      <span class="site-locked">BUILT-IN</span>
+    </div>
+    <div id="custom-sites"></div>
+    <div class="input-row">
+      <input class="fl-input" id="add-domain" type="text" placeholder="domain.com" spellcheck="false">
+      <button class="fl-btn" id="add-btn">+ Add</button>
+    </div>
+    <div class="msg" id="add-msg"></div>
+  </div>
+</div>
+
+<!-- ═══════ Break ═══════ -->
+<div class="section">
+  <div class="section-header" data-target="break-body">
+    <span class="section-title">Break</span>
+    <span class="section-arrow open" id="arrow-break">▾</span>
+  </div>
+  <div class="section-body open" id="break-body">
+    <div id="break-active-state" style="display:none;">
+      <div class="break-state">
+        <div class="break-big" id="break-countdown">00:00</div>
+        <div class="break-bar"><div class="break-bar-fill" id="break-fill"></div></div>
+        <div class="break-note">All sites unlocked · Focus resumes automatically</div>
+      </div>
+    </div>
+    <button class="btn-break-popup" id="btn-break">☕ Take Break</button>
+    <div class="msg" id="break-msg"></div>
+  </div>
+</div>
+
+<!-- ═══════ Settings ═══════ -->
+<div class="section">
+  <div class="section-header" data-target="settings-body">
+    <span class="section-title">Settings</span>
+    <span class="section-arrow" id="arrow-settings">▾</span>
+  </div>
+  <div class="section-body" id="settings-body">
+    <div class="settings-grid">
+      <div class="setting-item">
+        <span class="setting-label">BREAK DURATION</span>
+        <div class="setting-input-row">
+          <input class="num-input" id="s-break-dur" type="number" min="1" max="60" value="5">
+          <span class="setting-unit">min</span>
+        </div>
+      </div>
+      <div class="setting-item">
+        <span class="setting-label">BREAK COOLDOWN</span>
+        <div class="setting-input-row">
+          <input class="num-input" id="s-break-cd" type="number" min="1" max="180" value="25">
+          <span class="setting-unit">min</span>
+        </div>
+      </div>
+      <div class="setting-item" style="grid-column:1/-1">
+        <span class="setting-label">COMMITMENT LOCK ON ENABLE</span>
+        <select class="fl-select" id="s-commit">
+          <option value="0">Off — can disable anytime (PIN still required)</option>
+          <option value="30">30 min — no disable at all</option>
+          <option value="60">1 hour — no disable at all</option>
+          <option value="120">2 hours — no disable at all</option>
+          <option value="240">4 hours — no disable at all</option>
+        </select>
+      </div>
+    </div>
+
+    <hr class="settings-divider">
+
+    <div class="pin-section-title">Focus PIN</div>
+    <div class="pin-status-row">
+      <span class="pin-status unset" id="pin-status-text">No PIN set — anyone can disable</span>
+      <button class="pin-clear-btn" id="pin-clear-btn" style="display:none;">Remove</button>
+    </div>
+    <div class="input-row">
+      <input class="fl-input" id="new-pin-input" type="password" placeholder="Set new PIN (4+ chars)" maxlength="30" autocomplete="off">
+      <button class="fl-btn" id="set-pin-btn">Set</button>
+    </div>
+    <div class="msg" id="pin-setup-msg"></div>
+
+    <button class="save-btn" id="save-settings">Save Timing Settings</button>
+    <div class="save-confirm" id="save-confirm"></div>
+  </div>
+</div>
+
+<!-- ═══════ Footer ═══════ -->
+<div class="footer">
+  <span class="footer-text">FOCUSLOCK · SHIP YOUR GAME</span>
+  <div class="indicator" id="indicator"></div>
+</div>
+
+<script src="popup.js"></script>
+</body>
+</html>

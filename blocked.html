@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Focus Breach — FocusLock</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #0b0a14;
+    --bg2:       #111020;
+    --amber:     #e8a228;
+    --amber-dim: #7a5510;
+    --amber-glow:rgba(232,162,40,0.1);
+    --green:     #52c47a;
+    --green-dim: #2a6b40;
+    --red:       #e05565;
+    --text:      #cdd0de;
+    --dim:       #6c6f84;
+    --dim2:      #3e4055;
+    --border:    #201e33;
+    --border2:   #2c2940;
+    --mono:      'Space Mono', 'Courier New', monospace;
+  }
+
+  html, body {
+    width: 100%; height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    overflow: hidden;
+    user-select: none;
+  }
+
+  /* Subtle dot grid — barely visible */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: radial-gradient(circle, rgba(232,162,40,0.06) 1px, transparent 1px);
+    background-size: 32px 32px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* Corner brackets */
+  .corner {
+    position: fixed;
+    width: 20px; height: 20px;
+    opacity: 0.2;
+  }
+  .corner-tl { top: 28px; left: 28px; border-top: 1px solid var(--amber); border-left: 1px solid var(--amber); }
+  .corner-tr { top: 28px; right: 28px; border-top: 1px solid var(--amber); border-right: 1px solid var(--amber); }
+  .corner-bl { bottom: 28px; left: 28px; border-bottom: 1px solid var(--amber); border-left: 1px solid var(--amber); }
+  .corner-br { bottom: 28px; right: 28px; border-bottom: 1px solid var(--amber); border-right: 1px solid var(--amber); }
+
+  .page {
+    position: relative;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 3rem 2rem;
+    gap: 0;
+  }
+
+  /* ── Eyebrow ── */
+  .eyebrow {
+    font-size: 0.6rem;
+    letter-spacing: 0.3em;
+    color: var(--dim);
+    text-transform: uppercase;
+    margin-bottom: 2.5rem;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .eyebrow::before,
+  .eyebrow::after {
+    content: '';
+    display: block;
+    width: 30px;
+    height: 1px;
+    background: var(--dim2);
+  }
+
+  /* ── Hostname as the hero element ── */
+  .host-label {
+    font-size: 0.65rem;
+    letter-spacing: 0.2em;
+    color: var(--dim);
+    text-transform: uppercase;
+    margin-bottom: 0.6rem;
+  }
+  .host-value {
+    font-size: clamp(1.4rem, 5vw, 2.6rem);
+    font-weight: 700;
+    color: var(--amber);
+    letter-spacing: 0.04em;
+    text-align: center;
+    margin-bottom: 3rem;
+    max-width: 700px;
+    word-break: break-all;
+    line-height: 1.15;
+  }
+
+  /* ── Divider ── */
+  .divider {
+    width: 1px;
+    height: 48px;
+    background: linear-gradient(to bottom, transparent, var(--border2), transparent);
+    margin-bottom: 3rem;
+  }
+
+  /* ── Buttons ── */
+  .actions {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin-bottom: 3rem;
+  }
+
+  .btn {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 0.8rem 2rem;
+    border: 1px solid;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: transparent;
+    min-width: 190px;
+    text-align: center;
+  }
+
+  .btn-primary {
+    border-color: var(--green-dim);
+    color: var(--green);
+  }
+  .btn-primary:hover {
+    background: rgba(82,196,122,0.08);
+    border-color: var(--green);
+  }
+
+  .btn-break {
+    border-color: var(--dim2);
+    color: var(--amber);
+  }
+  .btn-break:hover:not(:disabled) {
+    background: var(--amber-glow);
+    border-color: var(--amber-dim);
+  }
+  .btn-break:disabled {
+    border-color: var(--dim2);
+    color: var(--dim2);
+    cursor: not-allowed;
+  }
+
+  /* ── Status row ── */
+  .status-row {
+    display: flex;
+    gap: 2.5rem;
+    font-size: 0.6rem;
+    color: var(--dim);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+  }
+  .status-val { color: var(--text); }
+
+  /* ── Break overlay ── */
+  #break-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(11,10,20,0.96);
+    z-index: 200;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1.8rem;
+  }
+  #break-overlay.active { display: flex; }
+
+  .break-eyebrow {
+    font-size: 0.6rem;
+    letter-spacing: 0.3em;
+    color: var(--dim);
+    text-transform: uppercase;
+  }
+  .break-timer {
+    font-size: clamp(4rem, 14vw, 9rem);
+    font-weight: 700;
+    color: var(--amber);
+    letter-spacing: 0.04em;
+    line-height: 1;
+  }
+  .break-progress {
+    width: 240px;
+    height: 1px;
+    background: var(--border2);
+    position: relative;
+    overflow: hidden;
+  }
+  .break-progress-fill {
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    background: var(--amber);
+    transition: width 1s linear;
+  }
+  .break-note {
+    font-size: 0.65rem;
+    color: var(--dim);
+    max-width: 280px;
+    text-align: center;
+    line-height: 2;
+    letter-spacing: 0.06em;
+  }
+</style>
+</head>
+<body>
+
+<div class="corner corner-tl"></div>
+<div class="corner corner-tr"></div>
+<div class="corner corner-bl"></div>
+<div class="corner corner-br"></div>
+
+<div class="page">
+  <div class="eyebrow">FocusLock · Blocked</div>
+
+  <div class="host-label">You navigated to</div>
+  <div class="host-value" id="blocked-host">—</div>
+
+  <div class="divider"></div>
+
+  <div class="actions">
+    <button class="btn btn-primary" id="btn-return">← Return to Focus</button>
+    <button class="btn btn-break"   id="btn-break">☕ Take Break</button>
+  </div>
+
+  <div class="status-row">
+    <span>Session <span class="status-val" id="session-time">—</span></span>
+    <span>Blocks <span class="status-val" id="block-count">—</span></span>
+    <span>Break <span class="status-val" id="break-status">—</span></span>
+  </div>
+</div>
+
+<!-- Break active overlay -->
+<div id="break-overlay">
+  <div class="break-eyebrow">Break ends in</div>
+  <div class="break-timer" id="break-countdown">05:00</div>
+  <div class="break-progress"><div class="break-progress-fill" id="break-fill"></div></div>
+  <div class="break-note">
+    All sites unlocked.<br>
+    Focus resumes automatically.
+  </div>
+</div>
+
+<script src="blocked.js"></script>
+</body>
+</html>
